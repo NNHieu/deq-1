@@ -1,0 +1,29 @@
+version: "3"
+   
+services:
+  gpu:
+#     build: 
+#       context: .
+#       dockerfile: Dockerfile
+#       args:
+#         buildno: 1 
+    image: nnhieu/deq
+    user: user
+    command: jupyter lab --ip 0.0.0.0 --allow-root --port 8080 --no-browser
+    # command: mpirun -n 8 python plot_surface.py --x=-1:1:5 --y=-1:1:5 --model deq --model_file cifar10/trained_nets/deq/DEQ_CIFAR10.ph --mpi --cuda --dir_type weights --xignore biasbn --xnorm filter --yignore biasbn --ynorm filter --raw_data
+    volumes: 
+      - .:/home/user/code
+    # network_mode: 'host'
+    ports:
+      - "8080:8080"
+    #   - "6006:6006"
+    # runtime: nvidia
+    # environment:
+    #   - NVIDIA_VISIBLE_DEVICES=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

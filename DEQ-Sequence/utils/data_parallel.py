@@ -77,6 +77,7 @@ class BalancedDataParallel(DataParallel):
         bsz = inputs[0].size(self.dim)
         num_dev = len(self.device_ids)
         gpu0_bsz = self.gpu0_bsz
+        print(bsz, gpu0_bsz)
         bsz_unit = (bsz - gpu0_bsz) // (num_dev - 1)
         if gpu0_bsz < bsz_unit:
             chunk_sizes = [gpu0_bsz] + [bsz_unit] * (num_dev - 1)

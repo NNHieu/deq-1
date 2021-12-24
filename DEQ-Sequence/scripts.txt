@@ -1,0 +1,1 @@
+bash wt103_deq_transformer.sh lossland --f_thres 30 --eval --load pretrained/pretrained_wt103_deqtrans_v3.pkl --mem_len 300 --pretrain_step 0 --rect -0.2 -0.2 0.2 0.2 --resolution 5 5 --batch_size 4

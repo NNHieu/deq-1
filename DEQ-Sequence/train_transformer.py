@@ -327,6 +327,7 @@ else:
 
 args.n_all_param = sum([p.nelement() for p in model.parameters() if p.requires_grad])
 
+args.multi_gpu=False
 if args.multi_gpu:
     model = model.to(device)
     if args.gpu0_bsz >= 0 and args.batch_size != args.gpu0_bsz*torch.cuda.device_count():
