@@ -17,7 +17,7 @@ from data_utils import get_lm_corpus
 from models.deq_transformer import DEQTransformerLM
 from lib.solvers import anderson, broyden
 from lib import radam
-from utils.exp_utils import create_exp_dir
+from utils.exp_utils import create_logger
 from utils.data_parallel import BalancedDataParallel
 from torch.utils.tensorboard import SummaryWriter
 
@@ -199,19 +199,25 @@ if args.d_embed < 0:
 
 assert args.batch_size % args.batch_chunk == 0
 
-args.work_dir = '{}-{}'.format(args.work_dir, args.dataset)
-timestamp = time.strftime('%Y%m%d-%H%M%S')
-if args.restart_dir:
-    timestamp = args.restart_dir.split('/')[1]
-args.work_dir = os.path.join(args.work_dir, timestamp)
+args.work_dir = '{}-{}-{}'.format(args.work_dir, args.dataset, 'eval' if args.eval else 'train')
+# timestamp = time.strftime('%Y%m%d-%H%M%S')
+# if args.restart_dir:
+#     timestamp = args.restart_dir.split('/')[1]
+# args.work_dir = os.path.join(args.work_dir, timestamp)
 if args.name == "N/A" and not args.debug:
     # If you find this too annoying, uncomment the following line and use timestamp as name.
     # args.name = timestamp
     raise ValueError("Please give a name to your run!")
 print(f"Experiment name: {args.name}")
-logging = create_exp_dir(args.work_dir,
-    scripts_to_save=['train_transformer.py', 'models/deq_transformer.py', '../lib/solvers.py'], debug=args.debug)
 
+# logging = create_logger(args.work_dir,
+    # scripts_to_save=['train_transformer.py', 'models/deq_transformer.py', '../lib/solvers.py'], debug=args.debug)
+
+logger, output_dir, tb_log_dir = create_logger(args.work_dir, args.work_dir,
+                                                     args.dataset, 'transformer', 'default', 'valid', 
+                                                     scripts_to_save=['lossland.py', 'models/deq_transformer.py', '../lib/solvers.py'])
+args.work_dir = output_dir
+logging = logger.info
 # Set the random seed manually for reproducibility.
 np.random.seed(args.seed)
 torch.manual_seed(args.seed)
@@ -578,16 +584,22 @@ log_start_time = time.time()
 eval_start_time = time.time()
 
 if args.eval:
+    
     train_step = 1e9
     epoch = -1
-    valid_loss = evaluate(va_iter)
-    logging('=' * 100)
-    logging('| End of training | valid loss {:5.2f} | valid ppl {:9.3f}'.format(valid_loss, math.exp(valid_loss)))
-    logging('=' * 100)
+    # valid_loss = evaluate(va_iter)
+    # logging('=' * 100)
+    # logging('| End of training | valid loss {:5.2f} | valid ppl {:9.3f}'.format(valid_loss, math.exp(valid_loss)))
+    # logging('=' * 100)
         
-    test_loss = evaluate(te_iter)
+    # test_loss = evaluate(te_iter)
+    # logging('=' * 100)
+    # logging('| End of training | test loss {:5.2f} | test ppl {:9.3f}'.format(test_loss, math.exp(test_loss)))
+    # logging('=' * 100)
+
+    train_loss = evaluate(tr_iter)
     logging('=' * 100)
-    logging('| End of training | test loss {:5.2f} | test ppl {:9.3f}'.format(test_loss, math.exp(test_loss)))
+    logging('| End of training | train loss {:5.2f} | valid ppl {:9.3f}'.format(train_loss, math.exp(train_loss)))
     logging('=' * 100)
     sys.exit(0)
 

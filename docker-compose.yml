@@ -8,9 +8,10 @@ services:
 #       args:
 #         buildno: 1 
     image: nnhieu/deq
-    user: user
-    command: jupyter lab --ip 0.0.0.0 --allow-root --port 8080 --no-browser
+    user: $DOCKER_USER
+    # command: cd DEQ-Sequence & bash wt103_deq_transformer.sh lossland --f_thres 30 --eval --load pretrained/pretrained_wt103_deqtrans_v3.pkl --mem_len 300 --pretrain_step 0 --rect -0.2 -0.2 0.2 0.2 --resolution 5 5 --batch_size 4
     # command: mpirun -n 8 python plot_surface.py --x=-1:1:5 --y=-1:1:5 --model deq --model_file cifar10/trained_nets/deq/DEQ_CIFAR10.ph --mpi --cuda --dir_type weights --xignore biasbn --xnorm filter --yignore biasbn --ynorm filter --raw_data
+    command: tail -F /dev/null 
     volumes: 
       - .:/home/user/code
     # network_mode: 'host'
@@ -25,5 +26,5 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              count: 1
+              count: 2
               capabilities: [gpu]

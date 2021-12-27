@@ -58,12 +58,7 @@ elif [[ $1 == 'lossland' ]]; then
         --d_inner 48000 \
         --dropout 0.05 \
         --dropatt 0.0 \
-        --optim Adam \
-        --lr 0.00025 \
-        --warmup_step 16000 \
-        --pretrain_steps 32000 \
         --eval-interval 5000 \
-        --max_step 300000 \
         --tgt_len 150 \
         --mem_len 150 \
         --eval_tgt_len 150 \
@@ -76,9 +71,10 @@ elif [[ $1 == 'lossland' ]]; then
         --jac_loss_weight 0.0 \
         --jac_loss_freq 0.0 \
         --jac_incremental 0 \
-        --batch_size 56 \
+        --batch_size 128 \
         --gpu0_bsz 14 \
-        --multi_gpu \
+        --mem_len 300 \
+        --eval \
         ${@:2}
 else
     echo 'unknown argment 1'

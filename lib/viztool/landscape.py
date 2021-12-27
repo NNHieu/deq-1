@@ -8,7 +8,6 @@ from warnings import resetwarnings
 from torch._C import device
 
 from torch.functional import Tensor
-from .utils import read_list, write_list
 import h5py
 
 # import torch.distributed as dist
@@ -20,6 +19,26 @@ import time
 from functools import partial
 # from utils import mpi4pytorch as mpi
 mpi = None
+
+def write_list(f, name, direction):
+    """ Save the direction to the hdf5 file with name as the key
+
+        Args:
+            f: h5py file object
+            name: key name_surface_file
+            direction: a list of tensors
+    """
+
+    grp = f.create_group(name)
+    for i, l in enumerate(direction):
+        if isinstance(l, torch.Tensor):
+            l = l.numpy()
+        grp.create_dataset(str(i), data=l)
+
+def read_list(f, name):
+    """ Read group with name as the key from the hdf5 file and return a list numpy vectors. """
+    grp = f[name]
+    return [grp[str(i)][:] for i in range(len(grp))]
 
 def get_weights_as_list(net):
     """ Extract parameters from net, and return a list of tensors"""
@@ -141,8 +160,7 @@ class Direction:
         # if torch.is_tensor(direction) and direction.is_cuda:
         #     direction = direction.cpu()
         # print(type(direction))
-        for d in direction:
-            d = d.cpu()
+        direction = [d.cpu() for d in direction]
         write_list(h5_file, name, direction)
 
     def load(h5_file, name):
@@ -189,7 +207,9 @@ class Dir2D(object):
     
     def tensor(self, dir_index):
         return self.tensors[dir_index]
-            
+    
+    def similarity(self):
+        return proj.cal_angle(proj.nplist_to_tensor(self._dir[0]), proj.nplist_to_tensor(self._dir[1]))
 
 class Surface:
     def __init__(self, path_dir2d, rect, resolution, path, layers) -> None:
@@ -288,14 +308,9 @@ class Sampler:
     def prepair(self):
         # if rank == 0: self.surface.open('r+')
         self.surface.dirs.to_tensor()
-        # Generate a list of indices of 'losses' that need to be filled in.
-        # The coordinates of each unfilled index (with respect to the direction vectors
-        # stored in 'd') are stored in 'coords'.
-        # inds, coords, inds_nums = scheduler.get_job_indices(*surface.get_unplotted_indices(loss_key), rank, size)
         self.layers = [self.surface.layers[name] for name in self.layer_names]
         self.layers_fl = [layer.ravel() for layer in self.layers]
-        model = self.model
-        model.eval()
+        self.model.eval()
         # model.to(self.device)
     
     def reduce(self):
@@ -317,7 +332,7 @@ class Sampler:
                 self.surface.h5_file['layers'][name][:] = layer
             self.surface.flush()
 
-    def run(self, evaluation, inds, coords, inds_nums):
+    def run(self, evaluate, inds, coords, max_inds_nums):
         """
             Calculate the loss values and accuracies of modified models in parallel
             using MPI reduce.
@@ -336,7 +351,7 @@ class Sampler:
                 Direction.set_weights(model, weights, self.surface.dirs.tensors, coord)
                 # Record the time to compute the loss value
                 loss_start = time.time()
-                values = evaluation(model)
+                values = evaluate(model)
                 loss_compute_time = time.time() - loss_start
                 # Record the result in the local array
                 for i, val in enumerate(values):
@@ -352,7 +367,7 @@ class Sampler:
 
             # This is only needed to make MPI run smoothly. If this process has less work than
             # the rank0 process, then we need to keep calling reduce so the rank0 process doesn't block
-            for i in range(max(inds_nums) - len(inds)):
+            for i in range(max_inds_nums - len(inds)):
                 self.reduce()
 
         total_time = time.time() - start_time

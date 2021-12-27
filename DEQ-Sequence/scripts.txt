@@ -1,1 +1,4 @@
-bash wt103_deq_transformer.sh lossland --f_thres 30 --eval --load pretrained/pretrained_wt103_deqtrans_v3.pkl --mem_len 300 --pretrain_step 0 --rect -0.2 -0.2 0.2 0.2 --resolution 5 5 --batch_size 4
+export DOCKER_USER="$(id -u):$(id -g)"
+bash wt103_deq_transformer.sh lossland --cuda --multi_gpu --f_thres 30 --eval --load pretrained/pretrained_wt103_deqtrans_v3.pkl --mem_len 300 --pretrain_step 0 --rect -0.2 -0.2 0.2 0.2 --resolution 1 1 --batch_size 60 -rank 0 -nproc 1
+
+bash wt103_deq_transformer.sh lossland --cuda --f_thres 30 --eval --load pretrained/pretrained_wt103_deqtrans_v3.pkl --mem_len 300 --pretrain_step 0 --rect -1 -1 1 1 --resolution 31 31 --rank 0 --nproc 2 --batch_size 128

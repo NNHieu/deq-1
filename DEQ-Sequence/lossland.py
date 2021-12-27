@@ -23,9 +23,10 @@ from torch.utils.tensorboard import SummaryWriter
 
 from lib.viztool.landscape import *
 from lib.viztool.scheduler import *
-from lib.viztool.utils import name_surface_file
+from lib.viztool.utils import name_surface_file, create_surfile
 
-
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   
+os.environ["CUDA_VISIBLE_DEVICES"]="1,"
 
 def add_parser():
     parser = argparse.ArgumentParser(description='PyTorch DEQ Sequence Model')
@@ -54,50 +55,6 @@ def add_parser():
                         help='global dropout rate (default: 0.05)')
     parser.add_argument('--dropatt', type=float, default=0.0,
                         help='attention map dropout rate (default: 0.0)')
-
-    # Initializations
-    # Note: Generally, to make sure the DEQ model is stable initially, we should constrain the range
-    #       of initialization.
-    parser.add_argument('--init', default='normal', type=str,
-                        help='parameter initializer to use.')
-    parser.add_argument('--emb_init', default='normal', type=str,
-                        help='parameter initializer to use.')
-    parser.add_argument('--init_range', type=float, default=0.05,
-                        help='parameters initialized by U(-init_range, init_range)')
-    parser.add_argument('--emb_init_range', type=float, default=0.01,
-                        help='parameters initialized by U(-init_range, init_range)')
-    parser.add_argument('--init_std', type=float, default=0.01,
-                        help='parameters initialized by N(0, init_std)')
-    parser.add_argument('--proj_init_std', type=float, default=0.01,
-                        help='parameters initialized by N(0, init_std)')
-
-    # Optimizers
-    parser.add_argument('--optim', default='Adam', type=str,
-                        choices=['Adam', 'SGD', 'Adagrad', 'RMSprop', 'RAdam'],
-                        help='optimizer to use.')
-    parser.add_argument('--lr', type=float, default=0.00025,
-                        help='initial learning rate (0.00025|5 for adam|sgd)')
-    parser.add_argument('--scheduler', default='cosine', type=str,
-                        choices=['cosine', 'inv_sqrt', 'dev_perf', 'constant'],
-                        help='lr scheduler to use.')
-    parser.add_argument('--warmup_step', type=int, default=0,
-                        help='the number of steps to warm up the learning rate to its lr value')
-    parser.add_argument('--decay_rate', type=float, default=0.5,
-                        help='decay factor when ReduceLROnPlateau is used')
-    parser.add_argument('--lr_min', type=float, default=0.0,
-                        help='minimum learning rate during annealing')
-
-    # Gradient updates
-    parser.add_argument('--clip', type=float, default=0.25,
-                        help='gradient clipping')
-    parser.add_argument('--clip_nonemb', action='store_true',
-                        help='only clip the gradient of non-embedding params')
-    parser.add_argument('--max_step', type=int, default=200000,
-                        help='upper epoch limit (at least 200K for WT103 or PTB)')
-    parser.add_argument('--batch_size', type=int, default=60,
-                        help='batch size')
-    parser.add_argument('--batch_chunk', type=int, default=1,
-                        help='split batch into chunks to save memory')
 
     # Sequence logistics
     parser.add_argument('--tgt_len', type=int, default=150,
@@ -163,10 +120,6 @@ def add_parser():
                         help='evaluation interval')
     parser.add_argument('--work_dir', default='LM-TFM', type=str,
                         help='experiment directory.')
-    parser.add_argument('--restart', action='store_true',
-                        help='restart training from the saved checkpoint')
-    parser.add_argument('--restart_dir', type=str, default='',
-                        help='restart dir')
     parser.add_argument('--debug', action='store_true',
                         help='run in debug mode (do not create exp dir)')
     parser.add_argument('--same_length', action='store_true',
@@ -188,16 +141,20 @@ def add_parser():
                         help='starting training step count (default to 0)')
     parser.add_argument('--patience', type=int, default=0,
                         help='patience')
-    parser.add_argument('--load', type=str, default='',
+    parser.add_argument('--load', type=str, required=True,
                         help='path to load weight')
     parser.add_argument('--name', type=str, default='N/A',
                         help='name of the trial')
-
+    parser.add_argument('--batch_size', type=int, default=60,
+                    help='batch size')
+    parser.add_argument('--batch_chunk', type=int, default=1,
+                    help='split batch into chunks to save memory')
     # Lossland params
     # parser.add_argument('--mpi', '-m', action='store_true', help='use mpi')
     parser.add_argument('--resolution', type=int, nargs=2, required=True)
     parser.add_argument('--rect', type=float, nargs=4, required=True)
-    # parser.add_argument('--rank', type=int, default=-1, required=True)
+    parser.add_argument('--rank', type=int, default=-1, required=True)
+    parser.add_argument('--nproc', type=int, default=-1, required=True)
 
     return parser
 
@@ -206,7 +163,7 @@ args = parser.parse_args()
 args.tied = not args.not_tied
 args.pretrain_steps += args.start_train_steps
 assert args.mem_len > 0, "For now you must set mem_len > 0 when using deq"
-args.work_dir += "deq"
+args.work_dir += f"deq_rank{args.rank}_nproc{args.nproc}"
 args.cuda = torch.cuda.is_available()
     
 if args.d_embed < 0:
@@ -316,25 +273,13 @@ def update_dropatt(m):
         else:
             m.dropatt.dropout = args.dropatt
 
-if args.restart:
-    with open(os.path.join(args.restart_dir, 'model.pt'), 'rb') as f:
-        model = torch.load(f)
-        model.stop_mode = args.stop_mode
-        model.logging = logging
-        model.b_solver = eval(args.b_solver)
-    model = model.float()
-    model.apply(update_dropout)
-    model.apply(update_dropatt)
-else:
-    model = DEQTransformerLM(ntokens, args.n_layer, args.eval_n_layer, args.n_head, args.d_model, args.d_head, args.d_inner,
-                             args.dropout, args.dropatt, tie_weights=args.tied, d_embed=args.d_embed,
-                             div_val=args.div_val, tie_projs=tie_projs, pre_lnorm=args.pre_lnorm,
-                             wnorm=args.wnorm, local_size=args.local_size, pretrain_steps=args.pretrain_steps,
-                             tgt_len=args.tgt_len, mem_len=args.mem_len, cutoffs=cutoffs, load=args.load,
-                             f_solver=eval(args.f_solver), b_solver=eval(args.b_solver), stop_mode=args.stop_mode, logging=logging)
-    if len(args.load) == 0:
-        model.apply(weights_init)    # Note: This applies weight_init recursively to modules in model
-        model.word_emb.apply(weights_init)
+
+model = DEQTransformerLM(ntokens, args.n_layer, args.eval_n_layer, args.n_head, args.d_model, args.d_head, args.d_inner,
+                            args.dropout, args.dropatt, tie_weights=args.tied, d_embed=args.d_embed,
+                            div_val=args.div_val, tie_projs=tie_projs, pre_lnorm=args.pre_lnorm,
+                            wnorm=args.wnorm, local_size=args.local_size, pretrain_steps=args.pretrain_steps,
+                            tgt_len=args.tgt_len, mem_len=args.mem_len, cutoffs=cutoffs, load=args.load,
+                            f_solver=eval(args.f_solver), b_solver=eval(args.b_solver), stop_mode=args.stop_mode, logging=logging)
 
 args.n_all_param = sum([p.nelement() for p in model.parameters() if p.requires_grad])
 
@@ -392,42 +337,26 @@ def evaluate(eval_iter, model):
 ###############################################################################
 # Lossland code
 ###############################################################################
+os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 
-def create_surfile(model, layers, dir_file, surf_file, rect, resolution, logger):
-    if not os.path.exists(dir_file):
-        logger.info('Create dir file at {}'.format(dir_file))
-        dir2d = Dir2D(model=model)
-        try:
-            with h5py.File(dir_file, 'w') as f:
-                dir2d.save(f)
-        except Exception as e:
-            os.remove(dir_file)
-            raise e
-    
-    if not os.path.exists(surf_file):
-        logger.info('Create surface file at {}'.format(surf_file))
-        surface = Surface(dir_file, rect, resolution, surf_file, {})
-        surface.add_layer(*layers)
-        surface.save()
-    
-    return surf_file
-
+# Create surface file if not exist
 dir_file = os.path.join(args.work_dir, 'dir.h5')
 surf_file = os.path.join(args.work_dir, name_surface_file(args.rect, args.resolution, 'surf'))
 layers = ('loss',)
-
-os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 create_surfile(model, layers, dir_file, surf_file, args.rect, args.resolution, logger)
 
-model = model.to("cuda:0")
+# Load surface and prepair sampler
+model = model.to(device)
 surface = Surface.load(surf_file)
 dir2d = surface.dirs
-similarity = proj.cal_angle(proj.nplist_to_tensor(dir2d[0]), proj.nplist_to_tensor(dir2d[1]))
-logger.info('cosine similarity between x-axis and y-axis: %f' % similarity)
-del similarity
+logger.info('cosine similarity between x-axis and y-axis: %f' % dir2d.similarity())
 sampler = Sampler(model, surface, layers, None, comm=None, rank=0, logger=logger)
 sampler.prepair()
-inds, coords, inds_nums = scheduler.get_job_indices(*surface.get_unplotted_indices('loss'), 0, 1)
+
+# Get the job
+inds, coords, inds_nums = scheduler.get_job_indices(*surface.get_unplotted_indices('loss'), args.rank, args.nproc)
+
+# Exec
 surface.open('r+')
-sampler.run(partial(evaluate, tr_iter), inds, coords, inds_nums)
+sampler.run(lambda model: (evaluate(va_iter, model), ), inds, coords, max(inds_nums))
 surface.close()

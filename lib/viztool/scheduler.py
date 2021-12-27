@@ -1,7 +1,6 @@
 """
     A task scheduler that assign unfinished jobs to different workers.
 """
-import numpy as np
 
 def split_inds(num_inds, nproc):
     """
@@ -17,7 +16,7 @@ def split_inds(num_inds, nproc):
     chunk = num_inds // nproc
     remainder = num_inds % nproc
     splitted_idx = []
-    for rank in range(0, nproc):
+    for rank in range(nproc):
         # Set the starting index for this slice
         start_idx = rank * chunk + min(rank, remainder)
         # The stopping index can't go beyond the end of the array
@@ -26,7 +25,9 @@ def split_inds(num_inds, nproc):
 
     return splitted_idx
 
-
+# Generate a list of indices of 'losses' that need to be filled in.
+# The coordinates of each unfilled index (with respect to the direction vectors
+# stored in 'd') are stored in 'coords'.
 def get_job_indices(inds, coords, rank, nproc):
     """
     Prepare the job indices over which coordinate to calculate.
