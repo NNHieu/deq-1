@@ -21,3 +21,4 @@ log/
 DEQ-Sequence/LM*/
 MDEQ-Vision/output/
 .ipynb_checkpoints/
+/datasets/*

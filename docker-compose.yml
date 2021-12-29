@@ -1,7 +1,7 @@
 version: "3"
    
 services:
-  gpu:
+  local:
 #     build: 
 #       context: .
 #       dockerfile: Dockerfile
@@ -21,6 +21,21 @@ services:
     # runtime: nvidia
     # environment:
     #   - NVIDIA_VISIBLE_DEVICES=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+  server1:
+    image: nnhieu/deq
+    user: $DOCKER_USER
+    command: tail -F /dev/null 
+    volumes: 
+      - .:/home/user/code
+    ports:
+      - "8080:8080"
     deploy:
       resources:
         reservations:
